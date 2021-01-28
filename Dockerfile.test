@@ -1,0 +1,9 @@
+FROM golang:1.15-alpine3.12
+
+RUN set -ex; \
+    apk update; \
+    apk add --no-cache git
+
+WORKDIR /client
+
+CMD CGO_ENABLED=0 go test ./...
