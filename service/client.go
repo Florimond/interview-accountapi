@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,64 +45,44 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 	}
 }
 
-// Response represents a contract for a response
-type Response interface {
-	As(interface{}) error
-}
-
-type errorResponse struct {
+type ErrorResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"error_message"`
 }
 
-type successResponse struct {
+type Response struct {
 	Code int             `json:"code"`
 	Data json.RawMessage `json:"data"`
 }
 
 // As decodes the response
-func (r *errorResponse) As(v interface{}) error {
-	return errors.New(r.Message)
-}
-
-// As decodes the response
-func (r *successResponse) As(v interface{}) error {
+func (r *Response) As(v interface{}) error {
 	return json.Unmarshal(r.Data, v)
 }
 
-func (c *Client) sendRequest(req *http.Request) Response {
+func (r *Response) IsErrorStatus() bool {
+	return r.Code < http.StatusOK || r.Code >= http.StatusBadRequest
+}
 
+func (c *Client) sendRequest(req *http.Request) (*Response, error) {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/vnd.api+json")
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	defer res.Body.Close()
 
-	// Decode an error
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
-		var errRes errorResponse
-		if err = json.NewDecoder(res.Body).Decode(&errRes); err == nil {
-			return &errRes
-		}
+	var response Response
+	response.Code = res.StatusCode
 
-		return &errorResponse{
-			Message: fmt.Sprintf("unknown error, status code: %d", res.StatusCode),
-		}
+	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return nil, err
 	}
 
-	// Read the body
-	var resp successResponse
-	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		return &errorResponse{
-			Message: err.Error(),
-		}
-	}
-
-	return &resp
+	return &response, nil
 }
 
 // formatOptions formats a set of URL options
@@ -134,11 +113,11 @@ func (c *Client) makeRequest(method, url string, urlOptions []string, body io.Re
 }
 
 // FindByID finds a document by its id
-func (c *Client) FindByID(provider contracts.Provider, id string) Response {
+func (c *Client) FindByID(provider contracts.Provider, id string) (*Response, error) {
 	url := fmt.Sprintf("%s/%s", provider.Path(), id)
 	req, err := c.makeRequest("GET", url, nil, nil)
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	return c.sendRequest(req)
@@ -155,28 +134,28 @@ func WithPageSize(s uint) string {
 }
 
 // List returns a list of documents for a provider
-func (c *Client) List(provider contracts.Provider, options ...string) Response {
+func (c *Client) List(provider contracts.Provider, options ...string) (*Response, error) {
 	req, err := c.makeRequest("GET", provider.Path(), options, nil)
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	return c.sendRequest(req)
 }
 
 // Delete deletes a document by its id
-func (c *Client) Delete(provider contracts.Provider, id string) Response {
+func (c *Client) Delete(provider contracts.Provider, id string) (*Response, error) {
 	url := fmt.Sprintf("%s/%s", provider.Path(), id)
 	req, err := c.makeRequest("DELETE", url, nil, nil)
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	return c.sendRequest(req)
 }
 
 // Create creates a document
-func (c *Client) Create(provider contracts.Provider, doc interface{}) Response {
+func (c *Client) Create(provider contracts.Provider, doc interface{}) (*Response, error) {
 	body := struct {
 		Data interface{} `json:"data"`
 	}{
@@ -185,12 +164,12 @@ func (c *Client) Create(provider contracts.Provider, doc interface{}) Response {
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	req, err := c.makeRequest("POST", provider.Path(), nil, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return &errorResponse{Message: err.Error()}
+		return nil, err
 	}
 
 	return c.sendRequest(req)

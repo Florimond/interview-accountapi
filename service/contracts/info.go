@@ -7,7 +7,7 @@ type RecordInfo struct {
 	ID             string    `json:"id"`
 	CreatedOn      time.Time `json:"created_on"`
 	ModifiedOn     time.Time `json:"modified_on"`
-	OrganisationID string    `json:"organiation_id"`
+	OrganisationID string    `json:"organisation_id"`
 	Type           string    `json:"type"`
 	Version        uint      `json:"version"`
 }
