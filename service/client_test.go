@@ -1,12 +1,13 @@
 package service
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/Florimond/interview-accountapi/service/contracts/account"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 /*
@@ -41,7 +42,7 @@ func TestList(t *testing.T) {
 	assert.Equal(t, len(accounts), 1)
 }
 */
-
+/*
 func TestCreate(t *testing.T) {
 	c := NewClient("http://localhost:8080/v1/", time.Minute)
 	attributes := account.Attributes{
@@ -60,4 +61,41 @@ func TestCreate(t *testing.T) {
 	var newAcc account.Account
 	resp.As(&newAcc)
 	fmt.Println(newAcc)
+}*/
+
+func TestIntegration(t *testing.T) {
+	log.Println("Start of the integration test.")
+
+	client := NewClient("http://localhost:8080/v1/", time.Minute)
+	ctx := context.Background()
+
+	log.Println("Create an account.")
+
+	attributes := account.Attributes{
+		Country:      "GB",
+		BaseCurrency: "GBP",
+		BankID:       "400300",
+		BankIDCode:   "GBDSC",
+		BIC:          "NWBKGB22",
+	}
+	acc := account.NewAccount("", "eb0bd6f5-c3f5-44b2-b677-acd23cdde73c", attributes)
+	resp, err := client.Create(ctx, account.Provider, acc)
+
+	require.NoError(t, err)
+	require.False(t, resp.IsErrorStatus())
+
+	log.Println("Account created successfully, unmarshal the response.")
+	var newAcc account.Account
+	err = resp.As(&newAcc)
+	require.NoError(t, err)
+
+	log.Println("Fetch the newly created account by ID.")
+	resp, err = client.FindByID(ctx, account.Provider, newAcc.ID)
+	require.NoError(t, err)
+	require.False(t, resp.IsErrorStatus())
+
+	log.Println("Account fetched successfully, unmarshal the response.")
+	var fetchAcc account.Account
+	err = resp.As(&fetchAcc)
+	require.NoError(t, err)
 }

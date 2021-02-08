@@ -2,9 +2,12 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -68,9 +71,29 @@ func (c *Client) sendRequest(req *http.Request) (*Response, error) {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/vnd.api+json")
 
-	res, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
+	ctx := req.Context()
+	attempts := 0
+	var res *http.Response
+	var err error
+	for {
+		log.Println("Attempting request...")
+		res, err = c.http.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if res.StatusCode == 0 || res.StatusCode == 500 || res.StatusCode > 501 {
+			log.Println("StatusCode ", res.StatusCode, " Waiting before retry...")
+			select {
+			case <-time.After(time.Duration(math.Pow(float64(attempts), 2.0)*50) * time.Millisecond): // Retry immediately the first time
+				attempts++
+			case <-ctx.Done():
+				log.Println("Request cancelled.")
+				return nil, ctx.Err()
+			}
+		} else {
+			break
+		}
 	}
 
 	defer res.Body.Close()
@@ -78,7 +101,7 @@ func (c *Client) sendRequest(req *http.Request) (*Response, error) {
 	var response Response
 	response.Code = res.StatusCode
 
-	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
 		return nil, err
 	}
 
@@ -107,15 +130,18 @@ func trim(v string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(v, "/"), "/")
 }
 
-func (c *Client) makeRequest(method, url string, urlOptions []string, body io.Reader) (*http.Request, error) {
+func (c *Client) makeRequest(ctx context.Context, method, url string, urlOptions []string, body io.Reader) (*http.Request, error) {
 	fullURL := fmt.Sprintf("%s/%s%s", trim(c.BaseURL), trim(url), formatOptions(urlOptions))
+	if ctx != nil {
+		return http.NewRequestWithContext(ctx, method, fullURL, body)
+	}
 	return http.NewRequest(method, fullURL, body)
 }
 
 // FindByID finds a document by its id
-func (c *Client) FindByID(provider contracts.Provider, id string) (*Response, error) {
+func (c *Client) FindByID(ctx context.Context, provider contracts.Provider, id string) (*Response, error) {
 	url := fmt.Sprintf("%s/%s", provider.Path(), id)
-	req, err := c.makeRequest("GET", url, nil, nil)
+	req, err := c.makeRequest(ctx, "GET", url, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +160,8 @@ func WithPageSize(s uint) string {
 }
 
 // List returns a list of documents for a provider
-func (c *Client) List(provider contracts.Provider, options ...string) (*Response, error) {
-	req, err := c.makeRequest("GET", provider.Path(), options, nil)
+func (c *Client) List(ctx context.Context, provider contracts.Provider, options ...string) (*Response, error) {
+	req, err := c.makeRequest(ctx, "GET", provider.Path(), options, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -144,9 +170,9 @@ func (c *Client) List(provider contracts.Provider, options ...string) (*Response
 }
 
 // Delete deletes a document by its id
-func (c *Client) Delete(provider contracts.Provider, id string) (*Response, error) {
+func (c *Client) Delete(ctx context.Context, provider contracts.Provider, id string) (*Response, error) {
 	url := fmt.Sprintf("%s/%s", provider.Path(), id)
-	req, err := c.makeRequest("DELETE", url, nil, nil)
+	req, err := c.makeRequest(ctx, "DELETE", url, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +181,7 @@ func (c *Client) Delete(provider contracts.Provider, id string) (*Response, erro
 }
 
 // Create creates a document
-func (c *Client) Create(provider contracts.Provider, doc interface{}) (*Response, error) {
+func (c *Client) Create(ctx context.Context, provider contracts.Provider, doc interface{}) (*Response, error) {
 	body := struct {
 		Data interface{} `json:"data"`
 	}{
@@ -167,7 +193,7 @@ func (c *Client) Create(provider contracts.Provider, doc interface{}) (*Response
 		return nil, err
 	}
 
-	req, err := c.makeRequest("POST", provider.Path(), nil, bytes.NewReader(bodyBytes))
+	req, err := c.makeRequest(ctx, "POST", provider.Path(), nil, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, err
 	}
