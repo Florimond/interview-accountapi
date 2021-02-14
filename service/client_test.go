@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -66,7 +67,8 @@ func TestCreate(t *testing.T) {
 func TestIntegration(t *testing.T) {
 	log.Println("Start of the integration test.")
 
-	client := NewClient("http://localhost:8080/v1/", time.Minute)
+	url := os.Getenv("API_URL")
+	client := NewClient(url, time.Minute)
 	ctx := context.Background()
 
 	log.Println("Create an account.")
@@ -82,7 +84,6 @@ func TestIntegration(t *testing.T) {
 	resp, err := client.Create(ctx, account.Provider, acc)
 
 	require.NoError(t, err)
-	require.False(t, resp.IsErrorStatus())
 
 	log.Println("Account created successfully, unmarshal the response.")
 	var newAcc account.Account
@@ -92,7 +93,6 @@ func TestIntegration(t *testing.T) {
 	log.Println("Fetch the newly created account by ID.")
 	resp, err = client.FindByID(ctx, account.Provider, newAcc.ID)
 	require.NoError(t, err)
-	require.False(t, resp.IsErrorStatus())
 
 	log.Println("Account fetched successfully, unmarshal the response.")
 	var fetchAcc account.Account

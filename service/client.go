@@ -6,40 +6,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Florimond/interview-accountapi/service/contracts"
-	//"github.com/Florimond/interview-accountapi/client/account"
 )
 
 // Client is a struct that represents a client to the API.
 type Client struct {
 	BaseURL string //url.URL
 	http    *http.Client
-
-	//Account *account.Account
 }
 
-// TODO: options, WithTimeout()
-// TODO: async and sync
-// TODO: modules for each part? Account, etc Client.Account.Fetch, Client.User...
-// TODO: version management
-// TODO: context to cancel requests!
+// Error represents an HTTP error with a code.
+type Error interface {
+	error
+	Code() int
+}
 
 // NewClient creates a new client.
 func NewClient(baseURL string, timeout time.Duration) *Client {
-
-	// TODO strict url checking
-	/*
-		url, err := url.Parse(baseURL)
-		if err != nil {
-			panic(err)
-		}*/
-
 	return &Client{
 		BaseURL: baseURL,
 		http: &http.Client{
@@ -48,11 +36,22 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 	}
 }
 
-type ErrorResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"error_message"`
+type errorResponse struct {
+	HTTPCode int    `json:"code"`
+	Message  string `json:"error_message"`
 }
 
+// Error complies with golang error interface
+func (r *errorResponse) Error() string {
+	return r.Message
+}
+
+// Code returns an HTTP response code
+func (r *errorResponse) Code() int {
+	return r.HTTPCode
+}
+
+// Response represents a parsed response
 type Response struct {
 	Code int             `json:"code"`
 	Data json.RawMessage `json:"data"`
@@ -63,49 +62,64 @@ func (r *Response) As(v interface{}) error {
 	return json.Unmarshal(r.Data, v)
 }
 
-func (r *Response) IsErrorStatus() bool {
-	return r.Code < http.StatusOK || r.Code >= http.StatusBadRequest
-}
-
 func (c *Client) sendRequest(req *http.Request) (*Response, error) {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/vnd.api+json")
 
 	ctx := req.Context()
 	attempts := 0
-	var res *http.Response
-	var err error
+
+retry:
 	for {
-		log.Println("Attempting request...")
-		res, err = c.http.Do(req)
+		res, err := c.http.Do(req)
 		if err != nil {
 			return nil, err
 		}
 
-		if res.StatusCode == 0 || res.StatusCode == 500 || res.StatusCode > 501 {
-			log.Println("StatusCode ", res.StatusCode, " Waiting before retry...")
+		switch {
+		case res.StatusCode == 0 || res.StatusCode == 500 || res.StatusCode > 501:
 			select {
 			case <-time.After(time.Duration(math.Pow(float64(attempts), 2.0)*50) * time.Millisecond): // Retry immediately the first time
 				attempts++
 			case <-ctx.Done():
-				log.Println("Request cancelled.")
 				return nil, ctx.Err()
 			}
-		} else {
-			break
+		case res.StatusCode >= 200 && res.StatusCode <= 299:
+			return parseResponse(res)
+		case res.StatusCode >= 400 && res.StatusCode <= 599:
+			return nil, parseError(res)
+		default:
+			break retry
 		}
 	}
 
+	return nil, fmt.Errorf("unknown error")
+}
+
+// parseResponse parses a successful response
+func parseResponse(res *http.Response) (*Response, error) {
 	defer res.Body.Close()
-
-	var response Response
-	response.Code = res.StatusCode
-
-	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
-		return nil, err
+	response := &Response{
+		Code: res.StatusCode,
 	}
 
-	return &response, nil
+	if err := json.NewDecoder(res.Body).Decode(response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+// parseError parses an error response
+func parseError(res *http.Response) error {
+	defer res.Body.Close()
+	response := &errorResponse{
+		HTTPCode: res.StatusCode,
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(response); err != nil {
+		return err
+	}
+	return response
 }
 
 // formatOptions formats a set of URL options
@@ -199,4 +213,13 @@ func (c *Client) Create(ctx context.Context, provider contracts.Provider, doc in
 	}
 
 	return c.sendRequest(req)
+}
+
+// IsHTTPError checks if an error is an HTTP error or not
+func IsHTTPError(r error) (int, bool) {
+	err, ok := r.(Error)
+	if !ok {
+		return 0, false
+	}
+	return err.Code(), true
 }
