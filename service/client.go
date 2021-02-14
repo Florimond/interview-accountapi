@@ -103,7 +103,7 @@ func parseResponse(res *http.Response) (*Response, error) {
 		Code: res.StatusCode,
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(response); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(response); err != nil && err != io.EOF { // io.EOF means an empty body
 		return nil, err
 	}
 	return response, nil
@@ -184,8 +184,8 @@ func (c *Client) List(ctx context.Context, provider contracts.Provider, options 
 }
 
 // Delete deletes a document by its id
-func (c *Client) Delete(ctx context.Context, provider contracts.Provider, id string) (*Response, error) {
-	url := fmt.Sprintf("%s/%s", provider.Path(), id)
+func (c *Client) Delete(ctx context.Context, provider contracts.Provider, id string, version uint) (*Response, error) {
+	url := fmt.Sprintf("%s/%s?version=%d/", provider.Path(), id, version)
 	req, err := c.makeRequest(ctx, "DELETE", url, nil, nil)
 	if err != nil {
 		return nil, err

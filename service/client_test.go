@@ -11,68 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-/*
-func TestList(t *testing.T) {
-	c := NewClient("http://localhost:8080/v1/", time.Minute)
-	var accounts account.Accounts
-	c.List(account.Provider).As(&accounts)
-	assert.Equal(t, 0, len(accounts))
-
-	c.List(account.Provider, WithPageSize(1), WithPageNumber(1)).As(&accounts)
-	assert.Equal(t, 0, len(accounts))
-}
-
-func TestList2(t *testing.T) {
-	c := NewClient("http://localhost:8080/v1/", time.Minute)
-	var accounts account.Accounts
-	c.List(account.Provider).As(&accounts)
-	assert.Equal(t, 1, len(accounts))
-
-	c.List(account.Provider, WithPageSize(1), WithPageNumber(1)).As(&accounts)
-	assert.Equal(t, 2, len(accounts))
-}
-*/
-/*
-func TestList(t *testing.T) {
-	c := NewClient("http://localhost:8080/v1/", time.Minute)
-	var accounts account.Accounts
-	c.List(account.Provider).As(&accounts)
-	assert.Equal(t, len(accounts), 3)
-
-	c.List(account.Provider, WithPageSize(1), WithPageNumber(1)).As(&accounts)
-	assert.Equal(t, len(accounts), 1)
-}
-*/
-/*
-func TestCreate(t *testing.T) {
-	c := NewClient("http://localhost:8080/v1/", time.Minute)
-	attributes := account.Attributes{
-		Country:      "GB",
-		BaseCurrency: "GBP",
-		BankID:       "400300",
-		BankIDCode:   "GBDSC",
-		BIC:          "NWBKGB22",
-	}
-	acc := account.NewAccount("", "eb0bd6f5-c3f5-44b2-b677-acd23cdde73c", attributes)
-	resp, err := c.Create(account.Provider, acc)
-
-	assert.NoError(t, err)
-	assert.False(t, resp.IsErrorStatus())
-
-	var newAcc account.Account
-	resp.As(&newAcc)
-	fmt.Println(newAcc)
-}*/
-
 func TestIntegration(t *testing.T) {
 	log.Println("Start of the integration test.")
 
 	url := os.Getenv("API_URL")
+	if len(url) == 0 {
+		url = "http://localhost:8080/v1"
+	}
 	client := NewClient(url, time.Minute)
 	ctx := context.Background()
 
 	log.Println("Create an account.")
-
 	attributes := account.Attributes{
 		Country:      "GB",
 		BaseCurrency: "GBP",
@@ -82,7 +31,6 @@ func TestIntegration(t *testing.T) {
 	}
 	acc := account.NewAccount("", "eb0bd6f5-c3f5-44b2-b677-acd23cdde73c", attributes)
 	resp, err := client.Create(ctx, account.Provider, acc)
-
 	require.NoError(t, err)
 
 	log.Println("Account created successfully, unmarshal the response.")
@@ -98,4 +46,25 @@ func TestIntegration(t *testing.T) {
 	var fetchAcc account.Account
 	err = resp.As(&fetchAcc)
 	require.NoError(t, err)
+
+	log.Println("List the accounts page 1.")
+	resp, err = client.List(ctx, account.Provider, WithPageSize(1))
+	require.NoError(t, err)
+
+	log.Println("List retrieved successfully, unmarshal the response.")
+	var accLst account.Accounts
+	err = resp.As(&accLst)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, 1, len(accLst))
+	//require.Equal(t, newAcc.ID, accLst[0].ID)
+
+	log.Println("Delete the created account.")
+	resp, err = client.Delete(ctx, account.Provider, newAcc.ID, newAcc.Version)
+	require.NoError(t, err)
+
+	log.Println("Attempt to fetch the deleted account.")
+	resp, err = client.FindByID(ctx, account.Provider, newAcc.ID)
+	require.Error(t, err)
+	_, ok := IsHTTPError(err)
+	require.True(t, ok)
 }
