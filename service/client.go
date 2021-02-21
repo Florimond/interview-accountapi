@@ -163,16 +163,6 @@ func (c *Client) FindByID(ctx context.Context, provider contracts.Provider, id s
 	return c.sendRequest(req)
 }
 
-// WithPageNumber builds a string reprenting a url option for the page number of the results
-func WithPageNumber(n uint) string {
-	return fmt.Sprint("page[number]=", n)
-}
-
-// WithPageSize builds a string representing a url option for the page size of the results
-func WithPageSize(s uint) string {
-	return fmt.Sprint("page[size]=", s)
-}
-
 // List returns a list of documents for a provider
 func (c *Client) List(ctx context.Context, provider contracts.Provider, options ...string) (*Response, error) {
 	req, err := c.makeRequest(ctx, "GET", provider.Path(), options, nil)
