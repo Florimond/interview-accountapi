@@ -5,8 +5,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Provider returns the provider for the accounts
-var Provider = contracts.NewStaticProvider("organisation/accounts")
+// Path returns the path to the resource.
+func Path(accountID string) string {
+	return "organisation/accounts/" + accountID
+}
 
 // Attributes embed the attributes specific to an account
 type Attributes struct {
@@ -23,7 +25,7 @@ type Account struct {
 	Attributes Attributes `json:"attributes"`
 }
 
-// NewAccount creates a new Account, filling some necessary record info
+// NewAccount creates a new Account struct, filling some necessary record info
 func NewAccount(ID string, orgID string, attributes Attributes) *Account {
 	if len(ID) == 0 {
 		ID = uuid.New().String()

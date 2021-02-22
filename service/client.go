@@ -10,13 +10,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/Florimond/interview-accountapi/service/contracts"
 )
 
 // Client is a struct that represents a client to the API.
 type Client struct {
-	BaseURL string //url.URL
+	BaseURL string
 	http    *http.Client
 }
 
@@ -153,9 +151,8 @@ func (c *Client) makeRequest(ctx context.Context, method, url string, urlOptions
 }
 
 // FindByID finds a document by its id
-func (c *Client) FindByID(ctx context.Context, provider contracts.Provider, id string) (*Response, error) {
-	url := fmt.Sprintf("%s/%s", provider.Path(), id)
-	req, err := c.makeRequest(ctx, "GET", url, nil, nil)
+func (c *Client) FindByID(ctx context.Context, path string, urlOptions ...string) (*Response, error) {
+	req, err := c.makeRequest(ctx, "GET", path, urlOptions, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -174,8 +171,8 @@ func WithPageSize(s uint) string {
 }
 
 // List returns a list of documents for a provider
-func (c *Client) List(ctx context.Context, provider contracts.Provider, options ...string) (*Response, error) {
-	req, err := c.makeRequest(ctx, "GET", provider.Path(), options, nil)
+func (c *Client) List(ctx context.Context, path string, urlOptions ...string) (*Response, error) {
+	req, err := c.makeRequest(ctx, "GET", path, urlOptions, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +181,9 @@ func (c *Client) List(ctx context.Context, provider contracts.Provider, options 
 }
 
 // Delete deletes a document by its id
-func (c *Client) Delete(ctx context.Context, provider contracts.Provider, id string, version uint) (*Response, error) {
-	url := fmt.Sprintf("%s/%s?version=%d/", provider.Path(), id, version)
-	req, err := c.makeRequest(ctx, "DELETE", url, nil, nil)
+func (c *Client) Delete(ctx context.Context, path string, version uint) (*Response, error) {
+	versionedPath := fmt.Sprintf("%s?version=%d/", path, version)
+	req, err := c.makeRequest(ctx, "DELETE", versionedPath, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +192,7 @@ func (c *Client) Delete(ctx context.Context, provider contracts.Provider, id str
 }
 
 // Create creates a document
-func (c *Client) Create(ctx context.Context, provider contracts.Provider, doc interface{}) (*Response, error) {
+func (c *Client) Create(ctx context.Context, path string, doc interface{}) (*Response, error) {
 	body := struct {
 		Data interface{} `json:"data"`
 	}{
@@ -207,7 +204,7 @@ func (c *Client) Create(ctx context.Context, provider contracts.Provider, doc in
 		return nil, err
 	}
 
-	req, err := c.makeRequest(ctx, "POST", provider.Path(), nil, bytes.NewReader(bodyBytes))
+	req, err := c.makeRequest(ctx, "POST", path, nil, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, err
 	}

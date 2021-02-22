@@ -7,9 +7,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Florimond/interview-accountapi/service/contracts/account"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Florimond/interview-accountapi/service/contracts/account"
 )
+
+func TestFormatOptions(t *testing.T) {
+	tests := []struct {
+		options  []string
+		expected string
+	}{
+		{[]string{}, ""},
+		{[]string{"a"}, "?a"},
+		{[]string{"a", "b"}, "?a&b"},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expected, formatOptions(test.options))
+	}
+}
 
 func TestIntegration(t *testing.T) {
 	log.Println("Start of the integration test.")
@@ -30,7 +47,7 @@ func TestIntegration(t *testing.T) {
 		BIC:          "NWBKGB22",
 	}
 	acc := account.NewAccount("", "eb0bd6f5-c3f5-44b2-b677-acd23cdde73c", attributes)
-	resp, err := client.Create(ctx, account.Provider, acc)
+	resp, err := client.Create(ctx, account.Path(""), acc)
 	require.NoError(t, err)
 
 	log.Println("Account created successfully, unmarshal the response.")
@@ -39,7 +56,7 @@ func TestIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	log.Println("Fetch the newly created account by ID.")
-	resp, err = client.FindByID(ctx, account.Provider, newAcc.ID)
+	resp, err = client.FindByID(ctx, account.Path(newAcc.ID))
 	require.NoError(t, err)
 
 	log.Println("Account fetched successfully, unmarshal the response.")
@@ -48,7 +65,7 @@ func TestIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	log.Println("List the accounts page 1.")
-	resp, err = client.List(ctx, account.Provider, WithPageSize(1))
+	resp, err = client.List(ctx, account.Path(""), WithPageSize(1))
 	require.NoError(t, err)
 
 	log.Println("List retrieved successfully, unmarshal the response.")
@@ -56,14 +73,13 @@ func TestIntegration(t *testing.T) {
 	err = resp.As(&accLst)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, 1, len(accLst))
-	//require.Equal(t, newAcc.ID, accLst[0].ID)
 
 	log.Println("Delete the created account.")
-	resp, err = client.Delete(ctx, account.Provider, newAcc.ID, newAcc.Version)
+	resp, err = client.Delete(ctx, account.Path(newAcc.ID), newAcc.Version)
 	require.NoError(t, err)
 
 	log.Println("Attempt to fetch the deleted account.")
-	resp, err = client.FindByID(ctx, account.Provider, newAcc.ID)
+	resp, err = client.FindByID(ctx, account.Path(newAcc.ID))
 	require.Error(t, err)
 	_, ok := IsHTTPError(err)
 	require.True(t, ok)
